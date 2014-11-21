@@ -1,0 +1,339 @@
+---
+title: "Initial Gene Expression Analysis of RNA-Seq V2 RSEM TCGA Data for Selected Genes, Tumor Samples Only"
+author: "Amy Olex"
+date: "change date"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+---
+
+Overview
+----------
+
+We are studying Genes associated with **INSERT PATHWAY AND CANCER** cancer in RNASeqV2 gene expression data from TCGA.  The RNASeq data was obtained via the Illumina HiSeq platform.  This report contains the analysis of tumor samples only and does not include normals.
+
+Methods
+---------
+
+- I parsed the RNASeqV2 raw_counts data for all COAD patients using my tcgaRC.R class.
+- Using methods in the tcgaRC class I parsed out selected clinical data of each sample, and classified each sample as tumor or normal.
+- I used R to perform various normalizations of the RNASeq data prior to plotting. The specific normalization method used in this report is printed out below.
+- I used only the tumor samples for this analysis
+
+```{r env_setup, echo=FALSE, message=FALSE, warning=FALSE}
+######### Set up my environment ###########
+library(DESeq2)
+library(gplots)
+library(ggplot2)
+library(corrplot)
+library(plyr)
+library(reshape2)
+library(grid)
+library(gridExtra)
+
+###Set new working directory
+setwd("/Users/alolex/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/")
+
+####Specify inputfile that has all normalized data
+file <- "/Users/alolex/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
+
+###Define genes of interest with aliases
+alias = data.frame(row.names=c( "EMR1.2015","TNF.7124","IL6.3569","STAT3.6774","NFKB1.4790","NFKB2.4791","RELA.5970","PECAM1.5175","LYVE1.10894","SPHK1.8877","SPHK2.56848","S1PR1.1901","S1PR2.9294","S1PR3.1903","S1PR4.8698","S1PR5.53637","ABCC1.4363","ABCG2.9429","SPNS2.124976","FLT1.2321","KDR.3791","FLT4.2324","TIE1.7075","TEK.7010","VEGFA.7422","VEGFC.7424","ANGPT2.285","SGPL1.8879","SPP1.6696", "ABCC11.85320"), alias=c("F4/80","TNF-alpha","IL-6","Stat3","NFkB1","NFkB2","p65","CD31","Lyve-1","SphK1","SphK2","S1PR1","S1PR2","S1PR3","S1PR4","S1PR5","ABCC1","ABCG2","Spns2","VEGFR1","VEGFR2","VEGFR3","Tie1","Tie2","VEGFA","VEGFC","Ang2","S1P-Lyase","SPP1", "ABCC11"))
+
+
+```
+
+```{r define_functions, echo=FALSE, message=FALSE, warning=FALSE}
+
+my_cor_plot <- function(gene_data, plot_num, title_base){
+  
+  cor_data = cor(t(gene_data))
+  
+  corrplot(cor_data, method="square", type="full", mar=c(1,0,4,0), order="hclust", hclust.method="complete", tl.col="black", addrect=9, title=paste("Plot ", plot_num, " - Correlation Matrix\n", title_base, " (N=",dim(gene_data)[2],")\nTop 9 Hierarchical Clusters Shown (Complete Linkage)", sep=""), tl.cex=.7)
+  
+  return(plot_num+1)
+}
+
+sub_analysis <- function(gene_data, plot_num, title_base, sub_targets, colors, fact){
+
+#transpose the gene matrix
+gene_data_t = as.data.frame(t(gene_data))
+gene_data_subset = as.data.frame(gene_data_t[sub_targets])
+
+#Euclidean Distance UnScaled Heatmap
+par(xpd=TRUE)
+heatmap.2(as.matrix(t(gene_data_subset)),ColSideColors=as.character(colors), trace="none", scale="none", xlab="Patient Samples", ylab="Genes", main=paste("Plot ", plot_num, "\n", title_base, " (N=",dim(gene_data_subset)[1],")\nScale = none, Dist = Euclid", sep=""), labCol="", margins=c(2,10), cexRow=1.5)
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(fact), col=levels(colors), lty=1, lwd=5, cex=.5)
+
+plot_num = plot_num +1
+
+#Euclidean Distance Scaled Heatmap
+par(xpd=TRUE)
+heatmap.2(as.matrix(t(gene_data_subset)),ColSideColors=as.character(colors), trace="none", scale="row", xlab="Patient Samples", ylab="Genes", main=paste("Plot ", plot_num, "\n", title_base, " (N=",dim(gene_data_subset)[1],")\nScale = row, Dist = Euclid", sep=""), labCol="", margins=c(2,10), cexRow=1.5)
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(fact), col=levels(colors), lty=1, lwd=5, cex=.5)
+plot_num = plot_num +1
+
+#Correlation Distance UnScaled Heatmap
+par(xpd=TRUE)
+heatmap.2(as.matrix(t(gene_data_subset)),ColSideColors=as.character(color), trace="none", scale="none", xlab="Patient Samples", ylab="Genes", main=paste("Plot ", plot_num, "\n", title_base, " (N=",dim(gene_data_subset)[1],")\nScale = none, Dist = Corr", sep=""), labCol="", margins=c(2,10), distfun=function(x) as.dist((1-cor(t(x))/2)), cexRow=1.5)
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(fact), col=levels(colors), lty=1, lwd=5, cex=.5)
+plot_num = plot_num +1
+
+#Correlation Distance UnScaled Heatmap
+par(xpd=TRUE)
+heatmap.2(as.matrix(t(gene_data_subset)),ColSideColors=as.character(color), trace="none", scale="row", xlab="Patient Samples", ylab="Genes", main=paste("Plot ", plot_num, "\n", title_base, " (N=",dim(gene_data_subset)[1],")\nScale = row, Dist = Corr", sep=""), labCol="", margins=c(2,10), distfun=function(x) as.dist((1-cor(t(x))/2)), cexRow=1.5)
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(fact), col=levels(colors), lty=1, lwd=5, cex=.5)
+plot_num = plot_num +1
+
+return(plot_num)
+}
+
+my_factor_boxplot <- function(sorted_data, fact, fact_name, plot_num, colors){
+  #add factor designations to sorted matrix
+sorted_data_t = as.data.frame(t(sorted_data))
+sorted_data_t[,fact_name] = fact
+
+test.m <- melt(sorted_data_t)
+print(ggplot(test.m, aes_string(x="variable", y="value", fill=fact_name)) + 
+  geom_boxplot() + scale_fill_manual(values=colors) + 
+  scale_x_discrete(labels=row.names(sorted_data)) + 
+  theme(plot.margin=unit(c(6,6,5,11),"mm"), 
+        axis.title.x = element_text(face="bold",size=16),
+        axis.text.x = element_text(angle=90, vjust=0.5, size=12), 
+        axis.title.y = element_text(vjust=2, face="bold", size=16),
+        axis.text.y = element_text(vjust=.5, size=12), 
+        legend.title = element_text(size=12, face="bold"), 
+        legend.text = element_text(size = 10, face = "bold"), 
+        legend.background = element_rect(fill=NA,size=.5, linetype="dotted"), 
+        legend.justification = c(1.03,-0.06), 
+        legend.position=c(1.03,-0.06),
+        plot.title = element_text(lineheight=.8, face="bold")) + 
+  ggtitle(paste("Plot ",plot_num," - RNASeqV2\nSimple Quantile Normalization of Selected Genes (N=",length(sorted_data),")\nSorted by mean across all samples." ,sep="")) + 
+  xlab("Genes") + 
+  ylab("Gene Expression (log2)") +
+  scale_y_continuous(breaks=c(5,6,7,8,9,10,11,12,13,14,15)) )
+
+plot_num = plot_num +1
+
+return(plot_num)
+}
+
+
+
+```
+
+```{r load_data, echo=FALSE, message=FALSE, warning=FALSE}
+############ Load Pre-Normalized Data and Drug Data #############
+# Get the RNASeq pre-normalized data
+load(file)
+# variables now avaliable from RData file:
+#"data", "rounded_data", "coldata", "dds", "vsd", "vsd_data", "logboxcox_data", "logshift_data", "qnorm_data", "voom_cyc_data", "voom_scale_data", "voom_none_data", "voom_quant_data"
+#I'm interested in the coldata and the qnorm_data
+#since I may want to generate a different report using a different normalization, I will make it generic and easily changable here.
+
+#change the following line of code to use a different normalization method
+ndata <- qnorm_data
+nname <- "Simple Quantile"
+
+#ndata <- vsd_data
+#nname <- "VST"
+
+#initilize plot_num tracker
+plot_num=1
+```
+
+###Target Genes
+
+The target genes for this analysis are:
+**INSERT LIST OF TARGET GOI HERE**
+
+```{r specify_targets, echo=FALSE, message=FALSE, warning=FALSE}
+# transpose the vsd_data matrix
+ndata_t = as.data.frame(t(ndata))
+
+#rename the genes to remove the pipe | in the name for easier parsing.
+newnames = gsub("\\|", ".", colnames(ndata_t))
+colnames(ndata_t) = newnames
+
+#Extract out the genes of interest from vsd_data_t and transpose it again at the same time so the genes are in the rows again
+ndata_gene = as.data.frame(t(ndata_t[,row.names(alias)]))
+
+#Now merge this with the Alias object and get the alias names as the row names
+ndata_gene2 = merge(alias, ndata_gene, by=0, all=TRUE)
+row.names(ndata_gene2) = ndata_gene2$alias
+ndata_gene2 = ndata_gene2[,-(1:2)]
+
+```
+
+###Data Normalization
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+paste("The data being used is from the file: ", file)
+paste("The data normalization used is: ", nname)
+```
+
+###Boxplots Before and After Normalization
+
+For this analysis I chose to keep all tumor and normal samples together to see if there were any major gene expression differences between tumor and normal samples for our genes of interest.  Therefore, I normalized across all samples.
+
+
+```{r normalization_boxplots1, echo=FALSE, message=FALSE, warning=FALSE}
+### Box plot BEFORE Normalization
+# I can't plot all samples, so take a sample of these to plot
+#color = revalue(coldata$tumor_status, c("tumor"="gold", "normal"="lightblue"))
+#my_fact = coldata$tumor_status
+#color_legend = revalue(levels(my_fact), c("tumor"="gold", "normal"="lightblue"))
+#fact_name="tumor_status"
+
+color = revalue(coldata$gender, c("MALE"="blue","FEMALE"="pink"))
+my_fact = coldata$gender
+color_legend = revalue(levels(my_fact), c("MALE"="blue","FEMALE"="pink"))
+fact_name="gender"
+
+#color = revalue(coldata$DFS, c("free"="green", "recurrence"="red", "na"="white"))
+#my_fact = coldata$DFS
+
+#color = revalue(coldata$OS, c("alive"="green", "dead"="red", "na"="white"))
+#my_fact = coldata$OS
+
+sample = seq(from=1, to=length(rounded_data), by=3)
+boxplot(log(as.data.frame(rounded_data[sample]), base=2), col=as.character(color[sample]), main=paste("Plot ",plot_num,"\nRNASeqV2 Log2 Transformed Un-Normalized Data\nAll Samples, N=", length(rounded_data), ", Subset Plotted=", length(sample)), xlab="Samples", ylab="raw_counts")
+
+plot_num = plot_num+1
+
+### Box plot AFTER Normalization
+boxplot(as.data.frame(ndata[sample]), col=as.character(color[sample]), main=paste("Plot ",plot_num,"\nRNASeqV2 ",nname," Normalized Data\nAll Samples, N=", length(ndata), ", Subset Plotted=", length(sample)), xlab="Samples", ylab="raw_counts")
+
+plot_num = plot_num+1
+```
+
+Box Plots Per Gene of Interest
+--------------------------------
+
+```{r, echo=FALSE, message=FALSE, error=FALSE, fig.width=9, fig.height=7}
+#sort the data based on mean across all samples
+means = data.frame(row.names=row.names(ndata_gene2), Means = rowMeans(ndata_gene2))
+ndata_gene3 = merge(means, ndata_gene2, by=0, all=TRUE)
+row.names(ndata_gene3) = ndata_gene3$Row.names
+ndata_gene3 = ndata_gene3[,-1]
+ndata_gene3=ndata_gene3[order(ndata_gene3$Means),]
+
+par(mar=c(8,5,5,3), mgp=c(3,1,0))
+boxplot(t(ndata_gene3[,-1]), col="grey", main=paste("Plot ",plot_num," - RNASeqV2\nSimple Quantile Normalization of Selected Genes (N=",length(ndata),")\nSorted by mean across all samples." ,sep=""), las=2, xlab="", ylab="Gene Expression (log2)", xaxt="n")
+axis(side=1, at=1:length(row.names(ndata_gene3)), labels=row.names(ndata_gene3), las=2)
+mtext("Genes", side=1, line=6)
+
+plot_num = plot_num+1
+```
+
+```{r, echo=FALSE, message=FALSE, error=FALSE, fig.width=9, fig.height=7}
+
+plot_num <- my_factor_boxplot(ndata_gene3[,-1], my_fact, fact_name , plot_num, color_legend)
+
+```
+
+Results
+--------
+
+###Sample Sizes
+
+*Number of samples in full dataset (includes tumor and normal)*
+```{r, echo=FALSE}
+length(ndata)
+```
+
+*Number of samples that are from tumors*
+```{r, echo=FALSE}
+count(coldata$tumor_status[coldata$tumor_status=="tumor"])[1,2]
+```
+
+*Number of samples that are normal*
+```{r, echo=FALSE}
+count(coldata$tumor_status[coldata$tumor_status=="normal"])[1,2]
+```
+
+
+###Gene Expression Heatmap
+
+This first heatmap shows the **un-scaled** gene expression for all patient samples (x-axis) for our genes of interest (y-axis).  Genes and samples were clusered using Euclidean distance, and the colors shown are unscaled.  Euclidean distance clusters on magnitude of gene expression, thus, it makes sense that the lowly expressed genes (red) are clustered together, and the highly expressed genes (yellow) are clustered together.   
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# create the heatmaps
+par(xpd=TRUE)
+heatmap.2(as.matrix(ndata_gene2),ColSideColors=as.character(color), trace="none", scale="none", xlab="Patient Samples", ylab="Genes", main=paste("Plot ",plot_num,"\nAll Samples (N=",dim(ndata_gene2)[2],")\nScale = none, Dist = Euclid", sep=""), labCol="", margins=c(2,10))
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(my_fact), col=levels(color), lty=1, lwd=5, cex=.5)
+
+plot_num = plot_num+1
+```
+
+This next plot is the same as the previous except that I **scaled** the data for each gene across all patient samples.  Thus, gene expression is now represented as a z-score.  Essentially, scaling gives a similar z-score to the highest value in a lowly expressed gene and the highest value in a highly expressed gene.  However, using Euclidean distance to cluster and looking at scaled values doesn't tell us much.  When using Euclidean to cluster I think the unscaled values tell us more about the data.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+par(xpd=TRUE)
+heatmap.2(as.matrix(ndata_gene2),ColSideColors=as.character(color), trace="none", scale="row", xlab="Patient Samples", ylab="Genes", main=paste("Plot ",plot_num,"\nAll Samples (N=",dim(ndata_gene2)[2],")\nScale = row, Dist = Euclid", sep=""), labCol="", margins=c(2,10))
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(my_fact), col=levels(color), lty=1, lwd=5, cex=.5)
+plot_num = plot_num+1
+```
+
+Instead of clustering on magnitude of expression (Euclidean distance) I have now clustered on correlation of expression patterns across all patients (for the gene clustering) and across all genes (for the patient clustering).  The first plot here is the **un-scaled** data.  You can see some highly and lowly expressed genes are now clustered together, but from looking at the unscaled data it is not clear why.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+par(xpd=TRUE)
+heatmap.2(as.matrix(ndata_gene2),ColSideColors=as.character(color), trace="none", scale="none", xlab="Patient Samples", ylab="Genes", main=paste("Plot ",plot_num,"\nAll Samples (N=",dim(ndata_gene2)[2],")\nScale = none, Dist = Corr", sep=""), labCol="", margins=c(2,10), distfun=function(x) as.dist((1-cor(t(x))/2)) )
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(my_fact), col=levels(color), lty=1, lwd=5, cex=.5)
+plot_num = plot_num+1
+
+```
+
+For the remainder of the plots I will show both the **scaled** and **un-scaled** data, however, I think from our discussions the unscaled data for euclidean distance gives us the most information when clustering on magnitude of expression, and the scaled data for correlation gives us the most information when clustering on pattern of expression.
+
+**Note, regardless of scaled or un-scaled heatmaps, the clustering is done BEFORE the scaling of values.**
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+par(xpd=TRUE)
+heatmap.2(as.matrix(ndata_gene2),ColSideColors=as.character(color), trace="none", scale="row", xlab="Patient Samples", ylab="Genes", main=paste("Plot ",plot_num,"\nAll Samples (N=",dim(ndata_gene2)[2],")\nScale = row, Dist = Corr", sep=""), labCol="", margins=c(2,10), distfun=function(x) as.dist((1-cor(t(x))/2)) )
+# create a legend
+legend("topright", inset=c(-.01,-.1),legend=levels(my_fact), col=levels(color), lty=1, lwd=5, cex=.5)
+plot_num = plot_num+1
+
+```
+
+
+###Correlation Heatmap
+
+The following plot shows the correlation of gene profiles across all COAD samples for each gene of interest. Blue is positively correlated and red is negatively correlated.  Results were hierarchically clustered before being plotted, and the top 7 clusters are shown with black squares around them.    
+
+If you compare this plot with **Plot 3** and **Plot 4** you will see the groupings are the same because they are clustered using correlation. 
+
+```{r first_plots_c, echo=FALSE, message=FALSE, warning=FALSE}
+## Now create a correlation matrix for all COAD samples
+plot_num <- my_cor_plot(ndata_gene2, plot_num, "All Patient Samples")
+
+```
+
+
+Subgroup Analyses (CHANGE TO BE SPECIFIC TO CORRELTION HEATMAP FOR EACH ANALYSIS)
+--------------------------------------------
+
+From the correlation heatmap in **Plot 7** we see there are several subgroups of genes that have strong positive or negative correlation to each other.  I took some of these groups and created heatmaps of just those genes to see if the patient samples would cluster differently.  
+
+###Analysis of (SUBGROUP OF GENES LISTED HERE)
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# define the targets
+sub_targets = c("Spns2", "Ang2", "S1PR5", "ABCC1", "VEGFA")
+#transpose the gene matrix
+plot_num <- sub_analysis(gene_data=ndata_gene2, plot_num=plot_num, title_base="All Patient Samples", sub_targets=sub_targets, colors=color, fact=my_fact)
+```
