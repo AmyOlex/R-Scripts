@@ -238,7 +238,7 @@ plot_num = plot_num+1
 Box Plots for Genes of Interest
 --------------------------------
 
-```{r, echo=FALSE, message=FALSE, error=FALSE}
+```{r, echo=FALSE, message=FALSE, error=FALSE, fig.width=9, fig.height=7}
 #sort the data based on mean across all samples
 means = data.frame(row.names=row.names(ndata_gene2), Means = rowMeans(ndata_gene2))
 ndata_gene3 = merge(means, ndata_gene2, by=0, all=TRUE)
@@ -278,7 +278,7 @@ ggplot(test.m2, aes(x=Var2, y=value)) +
 plot_num = plot_num+1
 ```
 
-```{r, echo=FALSE, message=FALSE, error=FALSE}
+```{r, echo=FALSE, message=FALSE, error=FALSE, fig.width=9, fig.height=7}
 
 plot_num <- my_factor_boxplot(ndata_gene3[,-1], my_fact, fact_name , plot_num, color_legend)
 
