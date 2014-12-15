@@ -1,0 +1,206 @@
+---
+title: 'PROJECT: CANCER - DFS?OS Analysis by Gene Pairs Using TCGA RNASeq Data'
+author: "Amy Olex"
+date: "Date"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+---
+
+
+```{r, echo=F, error=F, warning=F, message=F}
+library(knitr) 
+#opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, error=F, warning=F, message=F, dpi=300, out.width=700)
+opts_chunk$set(echo=F, error=F, warning=F, message=F)
+#options(replace.assign=TRUE, width=120)
+#set.seed(1)
+```
+
+```{r global_vars, echo=TRUE}
+CANCER <- "PAAD"
+SURVIVAL <- "DFS"
+CODE <- c("free"=0, "recurrence"=1)
+#CODE <- c("alive"=0, "dead"=1)
+PVAL <- .05
+GROUP_MIN <- 20
+
+WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
+INPUT_FILE1 <- "paad_DFS_120914.txt"
+INPUT_FILE2 <- "2014-12-10_survival_pvalTables_stepSize0.1_paad_DFS_120914.txt"
+DATA_FILE <- ""
+EXP_FILE <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
+
+## Patterns need to be "HIGH" or "LOW"
+PATTERN1 <- "HIGH"
+PATTERN2 <- "LOW"
+
+alias = data.frame(row.names=c( "EMR1.2015","TNF.7124","IL6.3569","STAT3.6774","NFKB1.4790","NFKB2.4791","RELA.5970","PECAM1.5175","LYVE1.10894","SPHK1.8877","SPHK2.56848","S1PR1.1901","S1PR2.9294","S1PR3.1903","S1PR4.8698","S1PR5.53637","ABCC1.4363","ABCG2.9429","SPNS2.124976","FLT1.2321","KDR.3791","FLT4.2324","TIE1.7075","TEK.7010","VEGFA.7422","VEGFC.7424","ANGPT2.285","SGPL1.8879","SPP1.6696", "ABCC11.85320"), alias=c("F4/80","TNF-alpha","IL-6","Stat3","NFkB1","NFkB2","p65","CD31","Lyve-1","SphK1","SphK2","S1PR1","S1PR2","S1PR3","S1PR4","S1PR5","ABCC1","ABCG2","Spns2","VEGFR1","VEGFR2","VEGFR3","Tie1","Tie2","VEGFA","VEGFC","Ang2","S1P-Lyase","SPP1", "ABCC11"))
+
+```
+
+```{r observations}
+OBSERVATIONS <- "Using gene pairs SIGNIFICANTLY lowers the survival p-values compared to using either gene individually.  Most of the gene pairs have more frequent recurrence when both genes are high; however with the immune response related genes it is flipped in some instances, where gene pairs with higher expression have fewer recurrences.  This might make sense as the immune system is helping to fight off the cancer."
+
+PATTERN <- paste(PATTERN1, ":", PATTERN2, sep="")
+```
+
+
+```{r setup, echo=FALSE, message=FALSE}
+# Load needed libraries
+library(plyr)
+library(survival)
+library(grid)
+library(gridExtra)
+
+# Load DFS data from file and add a type column
+setwd(WORKING_DIR)
+tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
+# Format the object and create the survival object
+
+tcga$type = revalue(tcga$event, CODE)
+
+## Load the gene expression data for tumor samples
+load(EXP_FILE)
+
+#load and format cutoff table
+test <- read.table(INPUT_FILE2, header=T)
+test1 <- test[which(Reduce("&", list(test$nHigh>=GROUP_MIN, test$nLow>=GROUP_MIN))),]
+test2 <- test1[order(test1[,1], test1[,3]),]
+cutoff_tbl <- test2[!duplicated(test2$gene),]
+
+#now format the cutoffs and pvals as a list for later use
+cutoffs <- as.list(as.data.frame(t(cutoff_tbl$cutoff)))
+names(cutoffs) <- cutoff_tbl$gene
+
+pvals <- as.list(as.data.frame(t(cutoff_tbl$pval)))
+names(pvals) <- cutoff_tbl$gene
+
+
+
+```
+
+```{r process_data, echo=FALSE, message=FALSE, warning=FALSE}
+
+# transpose the qnorm_data matrix
+ndata_t = as.data.frame(t(qnorm_data))
+
+#rename the genes to remove the pipe | in the name for easier parsing.
+newnames = gsub("\\|", ".", colnames(ndata_t))
+colnames(ndata_t) = newnames
+
+#Extract out the genes of interest from ndata_t and transpose it again at the same time so the genes are in the rows again
+ndata_gene = as.data.frame(t(ndata_t[,row.names(alias)]))
+
+#Now merge this with the Alias object and get the alias names as the row names
+ndata_gene2 = merge(alias, ndata_gene, by=0, all=TRUE)
+row.names(ndata_gene2) = ndata_gene2$alias
+ndata_gene2 = ndata_gene2[,-(1:2)]
+
+## Transpose the matrix so genes are now the columns
+gene_exp <- as.data.frame(t(ndata_gene2))
+
+## Remove any rows that are not solid "-01" tumors because they will introduce duplicate row names.
+## First identify any entries that are not solid tumors with a -01 at end.
+tmp = substr(row.names(gene_exp), start=14, stop=15)
+cropped_gene_exp = gene_exp[which(tmp=="01"),]
+
+## Crop the row names so I can merge data frames
+row.names(cropped_gene_exp) = substr(row.names(cropped_gene_exp), start=1, stop=12)
+
+## Sort the columns in alphabetical order so they match the cutoffs order
+cropped_gene_exp <- cropped_gene_exp[,order(names(cropped_gene_exp))]
+```
+
+
+#Overview
+This report presents the `r SURVIVAL` KM plots for the `r CANCER` TCGA data that have both clinical and RNASeq data available. In this analysis I chose pairs of our genes of interest using expression thresholds based on the previous `r SURVIVAL` report using single genes.  The goal is to determine if there is a difference in disease recurrence or survival if multiple genes in the pathway are regulated in a specific way.  Thus, in this report I'm comparing patients where both genes in a pair are expressed with the pattern `r PATTERN` with respect to their inidividual cutoffs to all other patients.   
+
+##Patient Overview
+
+There are `r dim(cropped_gene_exp)[1]` `r CANCER` patients with tumor RNASeq data, and `r dim(tcga)[1]` patients with usable `r SURVIVAL` time points. Intersecting these data leaves `r length(intersect(row.names(cropped_gene_exp), row.names(tcga)))` patients to generate the survival curves.
+
+#Methods
+
+##Obtaining `r SURVIVAL` Data
+
+Leo provided the `r SURVIVAL` data for this analysis.  He went through all the clinical data by hand.  
+
+##Discretizing Expression of Gene Pairs
+
+Cutoffs for high or low expression were chosen based on the most significant `r SURVIVAL` division from the initial single gene report, and are printed out in the table below along with the associated survival analysis p-value for using that gene individually. If both genes in a pair are greater than the gene-specific thresholds below the pair is considered as both high.  Otherwise the pair is not both high. This method holds for any pattern.  
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.height=8}
+grid.table(cutoff_tbl, gpar.coretext=gpar(cex=.8), gpar.coltext=gpar(cex=.8, fontface="bold"))
+```
+
+#Results
+
+Below are the KM-plots for this analysis.  I only printed out the plots tht met the following criteria:
+
+ - There were at least `r GROUP_MIN` patients in the `r PATTERN` and Not `r PATTERN` categories.
+ - The survival analysis is significant at the p=`r PVAL` level.
+ - The survival analysis p-value is less than BOTH of the p-values obtained via using either gene individually.
+
+The last criteria was implemented because some of these genes are able to divide the patients for `r SURVIVAL` with highly significant p-values.  Thus, I wanted to make sure using the pair of genes was more informative than using either individually.  
+
+##Observations
+
+`r OBSERVATIONS`
+
+
+```{r plotting,  echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=4}
+par(cex.main=0.8, mfrow=c(1,2))
+## If the cropped_gene_exp data is in the same order as the cutoffs list, then start creating high/low matrix for gene pairs
+if(all(row.names(cutoffs)==names(cropped_gene_exp))){
+  high_low <- as.data.frame(ifelse(cropped_gene_exp <= cutoffs, "LOW", "HIGH"))
+  #I want to evaluate all pair combinations for the specified pattern and see if the survival curve is significant or not.
+  for(g1 in names(high_low)){
+    for(g2 in names(high_low)[!(names(high_low) %in% g1)]){
+      #in this case both stands for both genes match the specified pattern.  This can change to a both low or one high one low etc.
+      both <- Reduce("&", list(high_low[,g1]==PATTERN1, high_low[,g2]==PATTERN2))
+      num_both <- count(both)$freq[2]
+      num_not <- count(both)$freq[1]
+      #turn both into a data.frame
+      both <- data.frame(row.names=row.names(high_low), both=both)
+      
+      
+      #If there are more than 20 patients in both categories then perform the survival analysis
+      if(num_both>=GROUP_MIN && num_not>=GROUP_MIN){
+        ## Merge the high/low values with the survival data, and only keep those that are in both sets (N=206)
+        tcga_surv_genes = merge(tcga, both, by=0, all=FALSE)
+        row.names(tcga_surv_genes) <- tcga_surv_genes$Row.names
+        tcga_surv_genes <- tcga_surv_genes[,-1]
+
+        N <- dim(tcga_surv_genes)[1]
+
+        # Create the Surv() object using time and type, which is really DFS status.
+        tcga_surv <- Surv(as.numeric(tcga_surv_genes$time), as.numeric(tcga_surv_genes$type))
+
+        ### Now we are ready to plot stuff
+        ### I only want to plot if it is significant, so lets get the pvalues first.
+        ## Calculate the pvalue and test for significance at p=0.05
+        sdf <- survdiff(tcga_surv~as.factor(tcga_surv_genes$both))
+        #p.val <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method="fdr", n=dim(alias)[1] )
+        p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
+        #list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN)
+        
+        ##Test to see if pval is significant at the 0.05 level AND that it is more significant than BOTH of the individual pvals, and plot if yes.
+        if(p.val <= PVAL && p.val < pvals[g1][[1]] && p.val < pvals[g2][[1]]){
+          tcga_fit = survfit(tcga_surv~as.factor(tcga_surv_genes$both))
+          plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""), xlab="days to event", ylab="% Patients")
+          legend("topright", legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1)
+        }
+        
+      } #end if groups are large enough
+      
+    } #end g2
+  } #end g1
+} #end if
+
+```
+
+

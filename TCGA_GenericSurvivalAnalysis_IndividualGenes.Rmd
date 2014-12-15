@@ -1,0 +1,260 @@
+---
+title: "PROJECT: CANCER - OS?DFS Analysis by Gene Using TCGA RNASeq Data"
+author: "Amy Olex"
+date: "December 10, 2014"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 3
+---
+
+```{r global_vars, echo=F, error=F, warning=F, message=F}
+library(knitr) 
+#opts_chunk$set(cache.path='cache/', fig.path='img/', cache=F, tidy=T, fig.keep='high', echo=F, error=F, warning=F, message=F, dpi=300, out.width=700)
+opts_chunk$set(echo=F, error=F, warning=F, message=F)
+#options(replace.assign=TRUE, width=120)
+#set.seed(1)
+```
+
+```{r, echo=TRUE}
+CANCER <- "PAAD"
+SURVIVAL <- "DFS"
+CODE <- c("free"=0, "recurrence"=1)
+#CODE <- c("alive"=0, "dead"=1)
+PVAL <- .05
+GROUP_MIN <- 20
+PVAL_ADJUST <- "bonferroni"
+#c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")
+STEP_SIZE <- .1
+
+WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
+INPUT_FILE1 <- "paad_DFS_120914.txt"
+EXP_FILE <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
+OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", INPUT_FILE1, sep="")
+
+
+alias = data.frame(row.names=c( "EMR1.2015","TNF.7124","IL6.3569","STAT3.6774","NFKB1.4790","NFKB2.4791","RELA.5970","PECAM1.5175","LYVE1.10894","SPHK1.8877","SPHK2.56848","S1PR1.1901","S1PR2.9294","S1PR3.1903","S1PR4.8698","S1PR5.53637","ABCC1.4363","ABCG2.9429","SPNS2.124976","FLT1.2321","KDR.3791","FLT4.2324","TIE1.7075","TEK.7010","VEGFA.7422","VEGFC.7424","ANGPT2.285","SGPL1.8879","SPP1.6696", "ABCC11.85320"), alias=c("F4/80","TNF-alpha","IL-6","Stat3","NFkB1","NFkB2","p65","CD31","Lyve-1","SphK1","SphK2","S1PR1","S1PR2","S1PR3","S1PR4","S1PR5","ABCC1","ABCG2","Spns2","VEGFR1","VEGFR2","VEGFR3","Tie1","Tie2","VEGFA","VEGFC","Ang2","S1P-Lyase","SPP1", "ABCC11"))
+```
+
+```{r observations}
+OBSERVATIONS <- "Using gene pairs SIGNIFICANTLY lowers the survival p-values compared to using either gene individually.  Most of the gene pairs have more frequent recurrence when both genes are high; however with the immune response related genes it is flipped in some instances, where gene pairs with higher expression have fewer recurrences.  This might make sense as the immune system is helping to fight off the cancer."
+
+```
+
+```{r setup}
+# Load needed libraries
+library(plyr)
+library(survival)
+
+# Load DFS data from file and add a type column
+setwd(WORKING_DIR)
+tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
+# Format the object and create the survival object
+tcga$type = revalue(tcga$event, CODE)
+
+## Load the gene expression data for tumor samples
+load(EXP_FILE)
+```
+
+```{r specify_targets}
+# transpose the vsd_data matrix
+ndata_t = as.data.frame(t(qnorm_data))
+
+#rename the genes to remove the pipe | in the name for easier parsing.
+newnames = gsub("\\|", ".", colnames(ndata_t))
+colnames(ndata_t) = newnames
+
+#Extract out the genes of interest from vsd_data_t and transpose it again at the same time so the genes are in the rows again
+ndata_gene = as.data.frame(t(ndata_t[,row.names(alias)]))
+
+#Now merge this with the Alias object and get the alias names as the row names
+ndata_gene2 = merge(alias, ndata_gene, by=0, all=TRUE)
+row.names(ndata_gene2) = ndata_gene2$alias
+ndata_gene2 = ndata_gene2[,-(1:2)]
+
+## Transpose the matrix so genes are now the columns
+gene_exp <- as.data.frame(t(ndata_gene2))
+
+## Remove any rows that are not solid "-01" tumors because they will introduce duplicate row names.
+## First identify any entries that are not solid tumors with a -01 at end.
+tmp = substr(row.names(gene_exp), start=14, stop=15)
+cropped_gene_exp = gene_exp[which(tmp=="01"),]
+
+## Re calculate the means
+means <- lapply(cropped_gene_exp, mean)
+
+## Crop the row names so I can merge data frames
+row.names(cropped_gene_exp) = substr(row.names(cropped_gene_exp), start=1, stop=12)
+
+## Create the high/low discretization using the mean expression for a gene across all tumor samples 
+high_low <- as.data.frame(ifelse(cropped_gene_exp <= means, "low", "high"))
+
+## Merge the high/low values with the survival data, and only keep those that are in both sets 
+tcga_surv_genes = merge(tcga, high_low, by=0, all=FALSE)
+row.names(tcga_surv_genes) <- tcga_surv_genes$Row.names
+tcga_surv_genes <- tcga_surv_genes[,-1]
+
+N <- dim(tcga_surv_genes)[1]
+
+# Create the Surv() object using time and type, which is really alive or dead status.
+tcga_surv <- Surv(as.numeric(tcga$time), as.numeric(tcga$type))
+
+### Now we are ready to plot stuff
+```
+#Overview
+
+This report presents the `r SURVIVAL` KM plots for the `r CANCER` TCGA data that have both clinical and RNASeq data available.    
+
+**Additional Associated Files**
+
+The following file(s) contain the data from this report in a tab-delimited format.
+
+`r OUTPUT_FILE`
+
+##Patient Overview
+
+There are `r dim(cropped_gene_exp)[1]` `r CANCER` patients with tumor RNASeq data, and `r dim(tcga)[1]` patients with usable `r SURVIVAL` time points. Intersecting these data leaves `r dim(tcga_surv_genes)[1]` patients to generate the survival curves.
+
+##Methods
+
+*Obtaining `r SURVIVAL` Data*
+
+Leo provided the `r SURVIVAL` data for this analysis.  He went through all the clinical data by hand.  
+
+*Discretizing Gene Expression*
+
+I labeled the gene expression of each gene for each patient as either high or low with respect to some chosen cutoff.  Cutoffs were chosen in 2 ways:
+
+- *Range of Values:* Cutoffs were chosen in increments of .1 from the minimum to the maximum gene expression of a given gene. Genes were labeled as high if the expression was greater than the cutoff and low otherwise.  If the survival pvalue for a cutoff value was <= `r PVAL` AND both highN and lowN were greater than or equal to `r GROUP_MIN` the survival plot was created, otherwise, no plot is shown.  For plots not shown you can find the results in the output file `r OUTPUT_FILE`.
+- *Mean Expression:* For each gene of interest I took the average gene expression over all tumor samples and used this as the cutoff for that gene.  All plots with survival pvalues, regardless of significance, are shown.  
+
+_Note: The means were calculated over all available tumor samples, but the plots only contain data for the intersecting patients._
+
+*Adjusting P-values*
+
+Plots are displayed based on the unadjusted p-value meeting the cutoff; however, the adjusted p-value is shown for each plot as well.    
+
+P-values have been adjusted using the `r PVAL_ADJUST` method with N being set to the number of genes of interest (N=`r dim(alias)[1]`).  The thought is that we are assuming these genes work in a system together, so can influence each other.  Therefore it is necessary to correct the pvalues.  
+
+#Results
+
+##`r SURVIVAL` Curve (no division by gene expression)
+
+```{r DFScurve}
+tcga_fit <- survfit(tcga_surv~1)
+plot(tcga_fit, main=paste(CANCER, SURVIVAL, "Curve, N=", N), xlab="Days to Event", ylab="Cumulative Survival Probability")
+```
+
+##Genes of Interest Survival Curves and Expression Distributions
+
+The following graphs were made by testing a range of cutoffs for each gene.  Cutoff values range from the min to the max gene expression values for a gene in increments of 0.1.  The plots shown are those that had at least `r GROUP_MIN` patients in each high/low group AND had the most significant p-value that was at least less than the unadjusted p-value of `r PVAL`.  If a gene did not have a significant p-value then a plot is not shown.
+
+**Tables of all pvalues for each gene and cutoff are provided in a seperate text file named `r OUTPUT_FILE` that can be opened in Excel.**
+
+
+```{r incrementalPlots, fig.width=15, fig.height=5}
+
+## Get the transpose of the data for the density plots
+vsd_t <- as.data.frame(t(ndata_gene2))
+
+## make a KM Plot for each Gene of Interest and calculate statistics
+for(gene in names(cropped_gene_exp)){
+  par(mfrow=c(1,2))
+  # Find the min and max values for this gene
+  # create a vector of values to loop over
+  # Loop over values
+  #     create high_low matrix
+  #     merge high/low with tcga_surv_genes
+  #     create survival object
+  #     calculate pvalues and test for significance
+  #     if significant, plot survival and distribution with data line
+  #     if not significant move on to next value
+  
+  # create vector of 10 values between min and max
+  vals <- seq(range(cropped_gene_exp[gene])[1],range(cropped_gene_exp[gene])[2], by=.1)
+  
+  best <- NULL
+
+  # Loop over vals
+  for(v in vals){
+
+    HL <- as.data.frame(ifelse(cropped_gene_exp[gene] <= v, "low", "high"))
+    
+    ## Merge the high/low values with the survival data, and only keep those that are in both sets
+    tcga_surv_genes2 = merge(tcga, HL, by=0, all=FALSE)
+    row.names(tcga_surv_genes2) <- tcga_surv_genes2$Row.names
+    tcga_surv_genes2 <- tcga_surv_genes2[,-1]
+    
+    # Test to see if we have multiple groups
+    if((length(count(tcga_surv_genes2[gene][[1]])$freq)<=1)){
+      next
+    }
+    ## Create the Surv() object using time and type, which is really alive or dead status.
+    tcga_surv <- Surv(as.numeric(tcga_surv_genes2$time), as.numeric(tcga_surv_genes2$type))
+    
+    ## Calculate the pvalue and test for significance at p=0.05
+    sdf <- survdiff(tcga_surv~tcga_surv_genes2[gene][[1]])
+    p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
+    p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
+    highN <- count(tcga_surv_genes2[,gene])$freq[1]
+    lowN <- count(tcga_surv_genes2[,gene])$freq[2]
+    #plot both KM and density plots
+    tcga_fit = survfit(tcga_surv~tcga_surv_genes2[gene][[1]])
+    if((p.val <= PVAL) && (highN>=GROUP_MIN) && (lowN>=GROUP_MIN)  ){
+      
+      if(is.null(best)){
+        best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+      }
+      else if(best$pval > p.val){
+        best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+      }
+    }
+  } #end for v in vals      
+  
+  if(!is.null(best)){
+      plot(best$fitobj, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)), xlab="days to event", ylab="% Patients")
+      legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
+  
+      plot(density(as.numeric(vsd_t[gene][[1]])), main=paste("Gene Expression Distribution -- ", gene))
+      abline(v=mean(as.numeric(vsd_t[gene][[1]])), col="blue")
+      abline(v=median(as.numeric(vsd_t[gene][[1]])), col="red")
+      abline(v=best$cutoff, col="green")
+      legend("topright", legend=c("Mean", "Median", "Cutoff"), col=c("blue", "red", "green"), lty=1)
+   }   
+
+} #end for each gene
+
+```
+
+###`r SURVIVAL` Curves Using Means
+
+The following graphs were made by using the mean gene expression across all RNAseq samples as the threshold for high vs low expression.  As you can see, most are not significant.
+
+```{r meanPlots, fig.width=15, fig.height=5}
+## make a KM Plot for each Gene of Interest and calculate statistics
+for(gene in names(cropped_gene_exp)){
+      par(mfrow=c(1,2))
+      #plot both KM and density plots
+      tcga_fit = survfit(tcga_surv~tcga_surv_genes[gene][[1]])
+      sdf <- survdiff(tcga_surv~tcga_surv_genes[gene][[1]])
+      p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
+      p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
+      ## Get the N for high and low
+      highN <- count(tcga_surv_genes[gene])$freq[1]
+      lowN <- count(tcga_surv_genes[gene])$freq[2]
+      plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", highN=",highN,", lowN=",lowN,") -- ", gene, "\nUnadjusted Pval = ", round(p.val, 5), "\nAdjusted Pval = ", round(p.val_adjust, 5)), xlab="days to event", ylab="% Patients")
+      legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
+  
+      plot(density(as.numeric(vsd_t[gene][[1]])), main=paste("Gene Expression Distribution -- ", gene))
+      abline(v=mean(as.numeric(vsd_t[gene][[1]])), col="blue")
+      abline(v=median(as.numeric(vsd_t[gene][[1]])), col="red")
+      legend("topright", legend=c("Mean", "Median"), col=c("blue", "red"), lty=1)
+
+}
+```
+
+```{r, create_pval_table}
+source("createPvalTable.R")
+createPvalFile(INPUT_FILE1, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE)
+```
+
