@@ -162,8 +162,8 @@ if(all(row.names(cutoffs)==names(cropped_gene_exp))){
     for(g2 in names(high_low)[!(names(high_low) %in% g1)]){
       #in this case both stands for both genes match the specified pattern.  This can change to a both low or one high one low etc.
       both <- Reduce("&", list(high_low[,g1]==PATTERN1, high_low[,g2]==PATTERN2))
-      num_both <- count(both)$freq[2]
-      num_not <- count(both)$freq[1]
+      num_both <- if(is.na(count(both)$freq[2])) 0 else count(both)$freq[2]
+      num_not <- if(is.na(count(both)$freq[1])) 0 else count(both)$freq[1]
       #turn both into a data.frame
       both <- data.frame(row.names=row.names(high_low), both=both)
       
