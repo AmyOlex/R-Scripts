@@ -26,6 +26,8 @@ GROUP_MIN <- 20
 PVAL_ADJUST <- "bonferroni"
 #c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")
 STEP_SIZE <- .1
+CENSOR <- 1500  #set to 0 if you don't want to censor data at a certain time point
+
 
 WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
 INPUT_FILE1 <- "paad_DFS_120914.txt"
@@ -45,6 +47,7 @@ OBSERVATIONS <- "Using gene pairs SIGNIFICANTLY lowers the survival p-values com
 # Load needed libraries
 library(plyr)
 library(survival)
+library(rms)
 
 # Load DFS data from file and add a type column
 setwd(WORKING_DIR)
@@ -52,8 +55,25 @@ tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
 # Format the object and create the survival object
 tcga$type = revalue(tcga$event, CODE)
 
+# Censor data that is >CENSOR to be names(CODE[1]) with a type of CODE[[1]] and a time of CENSOR
+if(CENSOR>0){
+  censor <- which(tcga$time>CENSOR)
+  tcga$event[censor] <- names(CODE[1])
+  tcga$time[censor] <- CENSOR
+  tcga$type[censor] <- CODE[[1]]
+}
+
 ## Load the gene expression data for tumor samples
 load(EXP_FILE)
+```
+
+```{r functions}
+makeTransparent<-function(someColor, alpha=100)
+{
+    newColor<-col2rgb(someColor)
+    apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
+                                                blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
+}
 ```
 
 ```{r specify_targets}
@@ -134,7 +154,18 @@ _Note: The means were calculated over all available tumor samples, but the plots
 
 Plots are displayed based on the unadjusted p-value meeting the cutoff; however, the adjusted p-value is shown for each plot as well.    
 
-P-values have been adjusted using the `r PVAL_ADJUST` method with N being set to the number of genes of interest (N=`r dim(alias)[1]`).  The thought is that we are assuming these genes work in a system together, so can influence each other.  Therefore it is necessary to correct the pvalues.  
+P-values have been adjusted using the `r PVAL_ADJUST` method with N being set to the number of genes of interest (N=`r dim(alias)[1]`).  The thought is that we are assuming these genes work in a system together, so can influence each other.  Therefore it is necessary to correct the pvalues. 
+
+*Censoring*
+
+If `r CENSOR` is greater than 0 then this report contains artificially censored survivial data at `r CENSOR` days.  Any value greater than `r CENSOR` days is changed to "`r names(CODE[1])`" and with an event time of `r CENSOR` days.  
+
+The following are the number of patients that were censored at `r CENSOR` days:
+```{r}
+if(CENSOR>0) print(length(censor))else print(0)
+```
+
+
 
 #Results
 
@@ -212,9 +243,17 @@ for(gene in names(cropped_gene_exp)){
   } #end for v in vals      
   
   if(!is.null(best)){
-      plot(best$fitobj, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)), xlab="days to event", ylab="% Patients")
-      legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
+      #plot(best$fitobj, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)), xlab="days to event", ylab="% Patients")
+      #legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
   
+      survplot(fit=best$fitobj,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent("pink", alpha=100), makeTransparent("lightblue", alpha=100)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c("red", "blue"), lty=1,xlab="days to event", ylab="% Patients")
+      
+      title(paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)))
+      
+      legend(x=1, y=.35, legend=c("High", "Low"), col=c("red", "blue"), lty=1, seg.len=1, cex=.7)
+
+
+      
       plot(density(as.numeric(vsd_t[gene][[1]])), main=paste("Gene Expression Distribution -- ", gene))
       abline(v=mean(as.numeric(vsd_t[gene][[1]])), col="blue")
       abline(v=median(as.numeric(vsd_t[gene][[1]])), col="red")
