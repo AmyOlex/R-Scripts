@@ -231,13 +231,16 @@ for(gene in names(cropped_gene_exp)){
     lowN <- count(tcga_surv_genes2[,gene])$freq[2]
     #plot both KM and density plots
     tcga_fit = survfit(tcga_surv~tcga_surv_genes2[gene][[1]])
+    tcga_npfit = npsurv(tcga_surv~tcga_surv_genes2[gene][[1]])
     if((p.val <= PVAL) && (highN>=GROUP_MIN) && (lowN>=GROUP_MIN)  ){
       
       if(is.null(best)){
-        best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        #best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
       }
       else if(best$pval > p.val){
-        best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        #best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
       }
     }
   } #end for v in vals      

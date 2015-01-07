@@ -27,9 +27,11 @@ CODE <- c("free"=0, "recurrence"=1)
 #CODE <- c("alive"=0, "dead"=1)
 PVAL <- .05
 GROUP_MIN <- 20
+CENSOR <- 1500  #set to 0 if you don't want to censor data at a certain time point
 
 WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
 INPUT_FILE1 <- "paad_DFS_120914.txt"
+## Make sure the below file is the one generated from running the individual analysis using the same censoring parameters!
 INPUT_FILE2 <- "2014-12-10_survival_pvalTables_stepSize0.1_paad_DFS_120914.txt"
 DATA_FILE <- ""
 EXP_FILE <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
@@ -55,6 +57,7 @@ library(plyr)
 library(survival)
 library(grid)
 library(gridExtra)
+library(rms)
 
 # Load DFS data from file and add a type column
 setwd(WORKING_DIR)
@@ -63,6 +66,13 @@ tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
 
 tcga$type = revalue(tcga$event, CODE)
 
+# Censor data that is >CENSOR to be names(CODE[1]) with a type of CODE[[1]] and a time of CENSOR
+if(CENSOR>0){
+  censor <- which(tcga$time>CENSOR)
+  tcga$event[censor] <- names(CODE[1])
+  tcga$time[censor] <- CENSOR
+  tcga$type[censor] <- CODE[[1]]
+}
 ## Load the gene expression data for tumor samples
 load(EXP_FILE)
 
@@ -81,6 +91,15 @@ names(pvals) <- cutoff_tbl$gene
 
 
 
+```
+
+```{r functions}
+makeTransparent<-function(someColor, alpha=100)
+{
+    newColor<-col2rgb(someColor)
+    apply(newColor, 2, function(curcoldata){rgb(red=curcoldata[1], green=curcoldata[2],
+                                                blue=curcoldata[3],alpha=alpha, maxColorValue=255)})
+}
 ```
 
 ```{r process_data, echo=FALSE, message=FALSE, warning=FALSE}
@@ -128,6 +147,16 @@ There are `r dim(cropped_gene_exp)[1]` `r CANCER` patients with tumor RNASeq dat
 ##Obtaining `r SURVIVAL` Data
 
 Leo provided the `r SURVIVAL` data for this analysis.  He went through all the clinical data by hand.  
+
+##Censoring
+
+If `CENSOR` is greater than 0 then this report contains artificially censored survivial data at `r CENSOR` days.  Any value greater than `r CENSOR` days is changed to "`r names(CODE[1])`" and with an event time of `r CENSOR` days.  
+
+The following are the number of patients that were censored at `r CENSOR` days:
+```{r}
+if(CENSOR>0) print(length(censor))else print(0)
+```
+
 
 ##Discretizing Expression of Gene Pairs
 
@@ -191,8 +220,16 @@ if(all(row.names(cutoffs)==names(cropped_gene_exp))){
         ##Test to see if pval is significant at the 0.05 level AND that it is more significant than BOTH of the individual pvals, and plot if yes.
         if(p.val <= PVAL && p.val < pvals[g1][[1]] && p.val < pvals[g2][[1]]){
           tcga_fit = survfit(tcga_surv~as.factor(tcga_surv_genes$both))
-          plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""), xlab="days to event", ylab="% Patients")
-          legend("topright", legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1)
+          tcga_npfit = npsurv(tcga_surv~as.factor(tcga_surv_genes$both))
+          
+          #plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""), xlab="days to event", ylab="% Patients")
+          #legend("topright", legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1)
+          
+          survplot(fit=tcga_npfit,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent("pink", alpha=100), makeTransparent("lightblue", alpha=100)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c("red", "blue"), lty=1,xlab="days to event", ylab="% Patients")
+      
+      title(paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""))
+      legend(x=1, y=.35, legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1, seg.len=1, cex=.7)
+          
         }
         
       } #end if groups are large enough
