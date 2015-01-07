@@ -59,6 +59,14 @@ library(grid)
 library(gridExtra)
 library(rms)
 
+if(SURVIVAL=="OS"){
+  TRUECOLOR <- "darkorchid4"
+  FALSECOLOR <- "chartreuse4"
+} else {
+  TRUECOLOR <- "blue"
+  FALSECOLOR <- "red"
+}
+
 # Load DFS data from file and add a type column
 setwd(WORKING_DIR)
 tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
@@ -225,11 +233,11 @@ if(all(row.names(cutoffs)==names(cropped_gene_exp))){
           #plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""), xlab="days to event", ylab="% Patients")
           #legend("topright", legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1)
           
-          survplot(fit=tcga_npfit,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent("pink", alpha=100), makeTransparent("lightblue", alpha=100)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c("red", "blue"), lty=1,xlab="days to event", ylab="% Patients")
+        survplot(fit=tcga_npfit,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent(FALSECOLOR, alpha=30), makeTransparent(TRUECOLOR, alpha=30)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c(FALSECOLOR, TRUECOLOR), lty=1, lwd=2, xlab="days to event", ylab="% Patients")
       
       title(paste(SURVIVAL, " (N=",N,", ",PATTERN,"=",num_both,", Not ",PATTERN,"=",num_not,")\nGene Pair:", g1, "(", round(cutoffs[g1][[1]], 2),"):", g2, "(", round(cutoffs[g2][[1]], 2), ")\nUncorrected P-value = ", round(p.val, 5), sep=""))
-      legend(x=1, y=.35, legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c("red", "blue"), lty=1, seg.len=1, cex=.7)
-          
+      legend(x=1, y=.35, legend=revalue(levels(as.factor(tcga_surv_genes$both)), c("FALSE"=paste("Not ", PATTERN, sep=""), "TRUE"=PATTERN) ), col=c(FALSECOLOR, TRUECOLOR), lty=1, lwd=3, seg.len=1, cex=.7)
+  
         }
         
       } #end if groups are large enough
