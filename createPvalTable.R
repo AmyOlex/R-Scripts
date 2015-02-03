@@ -137,7 +137,7 @@ createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE
   
   } #end for each gene
   
-  filename=paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", INFILE, "_", UNIQUE_ID, sep="")
+  filename=paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", UNIQUE_ID, "_", INFILE, sep="")
   
   # Save pval table to a file
   write.table(pval_table_all, file=filename, quote=FALSE, sep="\t", row.names=FALSE)
