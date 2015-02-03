@@ -28,11 +28,11 @@ PVAL_ADJUST <- "bonferroni"
 STEP_SIZE <- .1
 CENSOR <- 1500  #set to 0 if you don't want to censor data at a certain time point
 
-
+ANALYSIS_ID <- "censored"
 WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
 INPUT_FILE1 <- "paad_DFS_120914.txt"
 EXP_FILE <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
-OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", INPUT_FILE1, sep="")
+OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", INPUT_FILE1, "_", ANALYSIS_ID, sep="")
 
 
 alias = data.frame(row.names=c( "EMR1.2015","TNF.7124","IL6.3569","STAT3.6774","NFKB1.4790","NFKB2.4791","RELA.5970","PECAM1.5175","LYVE1.10894","SPHK1.8877","SPHK2.56848","S1PR1.1901","S1PR2.9294","S1PR3.1903","S1PR4.8698","S1PR5.53637","ABCC1.4363","ABCG2.9429","SPNS2.124976","FLT1.2321","KDR.3791","FLT4.2324","TIE1.7075","TEK.7010","VEGFA.7422","VEGFC.7424","ANGPT2.285","SGPL1.8879","SPP1.6696", "ABCC11.85320"), alias=c("F4/80","TNF-alpha","IL-6","Stat3","NFkB1","NFkB2","p65","CD31","Lyve-1","SphK1","SphK2","S1PR1","S1PR2","S1PR3","S1PR4","S1PR5","ABCC1","ABCG2","Spns2","VEGFR1","VEGFR2","VEGFR3","Tie1","Tie2","VEGFA","VEGFC","Ang2","S1P-Lyase","SPP1", "ABCC11"))
@@ -303,6 +303,6 @@ for(gene in names(cropped_gene_exp)){
 
 ```{r, create_pval_table}
 source("createPvalTable.R")
-createPvalFile(INPUT_FILE1, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE)
+createPvalFile(INPUT_FILE1, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE, ANALYSIS_ID)
 ```
 
