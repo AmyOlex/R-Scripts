@@ -1,0 +1,8 @@
+#!/bin/bash
+
+infile=$1
+
+for i in {1..21}
+do
+	vcftools --vcf $infile --chr $i --recode --recode-INFO-all --out VCU22-chr$i-merged
+done

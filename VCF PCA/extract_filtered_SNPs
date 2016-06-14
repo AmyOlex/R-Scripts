@@ -1,0 +1,7 @@
+#!/bin/bash
+
+
+for i in {1..22}
+do
+	vcftools --vcf VCU22-chr$i-merged.recode.vcf --positions VCU22-chr$i-merged.recode.vcf.LowBatchCorrSNPs.positions.txt --recode --recode-INFO-all --out VCU22-chr$i-merged-BatchEffFiltered
+done
