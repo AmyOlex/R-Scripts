@@ -1,34 +1,26 @@
 ## Amy Olex
-## 12/10/14
-## This script creates the pvalue tables that acompany the RMarkdown documents with Takabe's survival analyses.
+## 6/21/16
+## This script creates the pvalue tables that acompany the RMarkdown documents with the TCGA survival analyses.
 
 # Load needed libraries
 library(plyr)
 library(survival)
 library(gridExtra)
 
-createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE=0.1, UNIQUE_ID="pvals"){
-
+createPvalFile <- function(TCGA_SURV_DATA, EXP_DATA, CODE, alias, STEP_SIZE=0.1, FILE_NAME, TISSUE_CODE){
+  
   #set global varaibles
+  #TCGA_SURV_DATA - is the dataframe with the TCGA survival information in it that I created in the other program.
+  #EXP_DATA - is the object with the expression data in it, it is the qnorm_data variable
+  #CODE - is the mapping of ALIVE/DEAD etc.
   #STEP_SIZE=.1
-  #INFILE="tcga_DFS_091914.txt"
-  #CODE=c("free"=0, "recurrence"=1)
   
-  #INFILE="tcga_OS_092214.txt"
-  #CODE=c("alive"=0, "dead"=1)
-  
-  
-  # Load data from file and add a type column
-  tcga <- read.delim(INFILE, header=TRUE, sep="\t", row.names=1)
-  
-  # Format the tcga object and create the survival object
-  tcga$type = revalue(tcga$event, CODE)
-
+  # Load TCGA survival data object
+  tcga <- TCGA_SURV_DATA
   
   ## Load the gene expression data for tumor samples
-  load(EXP_FILE)
   
-  ndata <- qnorm_data
+  ndata <- EXP_DATA
   
   # transpose the vsd_data matrix
   ndata_t = as.data.frame(t(ndata))
@@ -51,14 +43,14 @@ createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE
   ## Remove any rows that are not solid "-01" tumors because they will introduce duplicate row names.
   ## First identify any entries that are not solid tumors with a -01 at end.
   tmp = substr(row.names(gene_exp), start=14, stop=15)
-  cropped_gene_exp = gene_exp[which(tmp=="01"),]
+  cropped_gene_exp = gene_exp[which(tmp==TISSUE_CODE),]
   
   
   ## Re calculate the means
   means <- lapply(cropped_gene_exp, mean)
   
   ## Crop the row names so I can merge data frames
-  row.names(cropped_gene_exp) = substr(row.names(cropped_gene_exp), start=1, stop=12)
+  #row.names(cropped_gene_exp) = substr(row.names(cropped_gene_exp), start=1, stop=12)
   
   ## Create the high/low discretization using the mean expression for a gene across all tumor samples (N=273)
   high_low <- as.data.frame(ifelse(cropped_gene_exp <= means, "low", "high"))
@@ -112,7 +104,7 @@ createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE
         pval_table$pval[i] <- "NA"
         pval_table$nHigh[i] <- "NA"
         pval_table$nLow[i] <- "NA"
-        pval_table$pval_adj[i] <- "NA"
+        #pval_table$pval_adj[i] <- "NA"
         next
       }
       ## Create the Surv() object using time and type, which is really alive or dead status.
@@ -120,7 +112,7 @@ createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE
       
       ## Calculate the pvalue and test for significance at p=0.01
       sdf <- survdiff(tcga_surv~tcga_surv_genes2[gene][[1]])
-      p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
+      #p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
       p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
       highN <- count(tcga_surv_genes2[,gene])$freq[1]
       lowN <- count(tcga_surv_genes2[,gene])$freq[2]
@@ -130,15 +122,15 @@ createPvalFile <- function(INFILE, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE
       pval_table$pval[i] <- round(p.val,5)
       pval_table$nHigh[i] <- highN
       pval_table$nLow[i] <- lowN
-      pval_table$pval_adj[i] <- round(p.val_adjust,5)
+      #pval_table$pval_adj[i] <- round(p.val_adjust,5)
     } #end for v in vals
     
     pval_table_all <- do.call(rbind, list(pval_table_all,pval_table))
-  
+    
   } #end for each gene
   
-  filename=paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", UNIQUE_ID, "_", INFILE, sep="")
+  #filename=paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", UNIQUE_ID, "_", INFILE, sep="")
   
   # Save pval table to a file
-  write.table(pval_table_all, file=filename, quote=FALSE, sep="\t", row.names=FALSE)
+  write.table(pval_table_all, file=FILE_NAME, quote=FALSE, sep="\t", row.names=FALSE)
 }

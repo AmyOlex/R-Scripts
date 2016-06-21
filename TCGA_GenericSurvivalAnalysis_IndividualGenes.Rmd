@@ -1,7 +1,7 @@
 ---
-title: "PROJECT: CANCER - OS?DFS Analysis by Gene Using TCGA RNASeq Data"
+title: "PROJECT: CANCER - OS?DFS Analysis by Gene Using TCGA RNASeqV2 RSEM Data on TISSUE TYPE HERE"
 author: "Amy Olex"
-date: "December 10, 2014"
+date: "DATE"
 output: 
   html_document:
     toc: yes
@@ -18,28 +18,34 @@ opts_chunk$set(echo=F, error=F, warning=F, message=F)
 
 ```{r, echo=TRUE}
 CANCER <- "PAAD"
-SURVIVAL <- "DFS"
-CODE <- c("free"=0, "recurrence"=1)
-#CODE <- c("alive"=0, "dead"=1)
+TISSUE_CODE <- "01"  ### 01 for Primary tumor, 11 for solid normal tissue...see line 123 below.  This limits this analysis to one tissue type only.
+SURVIVAL <- "OS"
+CODE <- c("LIVING"=0, "DECEASED"=1)  ##categories from cBioPortal
 PVAL <- .05
 GROUP_MIN <- 20
-PVAL_ADJUST <- "bonferroni"
-#c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr", "none")
-STEP_SIZE <- .1
-CENSOR <- 1500  #set to 0 if you don't want to censor data at a certain time point
+STEP_SIZE <- .1 #set to zero to use NUM_STEPS
+NUM_STEPS <- 0  #set to zero to use STEP_SIZE
+CENSOR <- 0  #set to 0 if you don't want to censor data at a certain time point
 
-ANALYSIS_ID <- "censored"
+ANALYSIS_ID <- "tumor"  ###or normal or censored etc.
 WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
-INPUT_FILE1 <- "paad_DFS_120914.txt"
+
 EXP_FILE <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/RNAseq_PAAD_all_111914/normalization/paad_111914_tumorOnlySamplesNormalized_n179.RData"
-OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", ANALYSIS_ID, "_", INPUT_FILE1, sep="")
+
+if(STEP_SIZE > 0){
+  OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_stepSize", as.character(STEP_SIZE), "_", ANALYSIS_ID, "_",CANCER,"_",SURVIVAL,".txt", sep="")
+}
+else{
+  OUTPUT_FILE <- paste(Sys.Date(), "_survival_pvalTables_numSteps", as.character(NUM_STEPS), "_", ANALYSIS_ID, "_",CANCER,"_",SURVIVAL,".txt", sep="")
+}
+
 
 
 alias = data.frame(row.names=c( "EMR1.2015","TNF.7124","IL6.3569","STAT3.6774","NFKB1.4790","NFKB2.4791","RELA.5970","PECAM1.5175","LYVE1.10894","SPHK1.8877","SPHK2.56848","S1PR1.1901","S1PR2.9294","S1PR3.1903","S1PR4.8698","S1PR5.53637","ABCC1.4363","ABCG2.9429","SPNS2.124976","FLT1.2321","KDR.3791","FLT4.2324","TIE1.7075","TEK.7010","VEGFA.7422","VEGFC.7424","ANGPT2.285","SGPL1.8879","SPP1.6696", "ABCC11.85320"), alias=c("F4/80","TNF-alpha","IL-6","Stat3","NFkB1","NFkB2","p65","CD31","Lyve-1","SphK1","SphK2","S1PR1","S1PR2","S1PR3","S1PR4","S1PR5","ABCC1","ABCG2","Spns2","VEGFR1","VEGFR2","VEGFR3","Tie1","Tie2","VEGFA","VEGFC","Ang2","S1P-Lyase","SPP1", "ABCC11"))
 ```
 
 ```{r observations}
-OBSERVATIONS <- "Using gene pairs SIGNIFICANTLY lowers the survival p-values compared to using either gene individually.  Most of the gene pairs have more frequent recurrence when both genes are high; however with the immune response related genes it is flipped in some instances, where gene pairs with higher expression have fewer recurrences.  This might make sense as the immune system is helping to fight off the cancer."
+OBSERVATIONS <- "To fill in...."
 
 ```
 
@@ -57,11 +63,21 @@ if(SURVIVAL=="OS"){
   HIGHCOLOR <- "red"
 }
 
-# Load DFS data from file and add a type column
+# Load Survival data from file and add a type column
 setwd(WORKING_DIR)
-tcga <- read.delim(INPUT_FILE1, header=TRUE, sep="\t", row.names=1)
-# Format the object and create the survival object
-tcga$type = revalue(tcga$event, CODE)
+
+## Load the gene expression and survival data for samples (survival data is all in the same opbject now)
+## Note: I may need to recode the names for what I use in this report.
+load(EXP_FILE)
+
+#coldata <- coldata1_TP             ##If recode is needed
+#qnorm_data <- qnorm_data_TP        ##If recode is needed
+
+#get the survival data
+tcga <- coldata[,c("OS.status","OS.time")]  ##These headers should be generic, but if not I need to select for them specifically here.
+names(tcga) <- c("event","time")
+tcga$type = as.numeric(as.character(revalue(tcga$event, CODE)))
+tcga$time = as.numeric(as.character(tcga$time))
 
 # Censor data that is >CENSOR to be names(CODE[1]) with a type of CODE[[1]] and a time of CENSOR
 if(CENSOR>0){
@@ -71,8 +87,6 @@ if(CENSOR>0){
   tcga$type[censor] <- CODE[[1]]
 }
 
-## Load the gene expression data for tumor samples
-load(EXP_FILE)
 ```
 
 ```{r functions}
@@ -106,7 +120,7 @@ gene_exp <- as.data.frame(t(ndata_gene2))
 ## Remove any rows that are not solid "-01" tumors because they will introduce duplicate row names.
 ## First identify any entries that are not solid tumors with a -01 at end.
 tmp = substr(row.names(gene_exp), start=14, stop=15)
-cropped_gene_exp = gene_exp[which(tmp=="01"),]
+cropped_gene_exp = gene_exp[which(tmp==TISSUE_CODE),]  ###This limits this analysis to one tissue code only
 
 ## Re calculate the means
 means <- lapply(cropped_gene_exp, mean)
@@ -125,44 +139,60 @@ tcga_surv_genes <- tcga_surv_genes[,-1]
 N <- dim(tcga_surv_genes)[1]
 
 # Create the Surv() object using time and type, which is really alive or dead status.
-tcga_surv <- Surv(as.numeric(tcga$time), as.numeric(tcga$type))
+tcga_surv <- Surv(as.numeric(paste(tcga$time)), as.numeric(paste(tcga$type)))
 
 ### Now we are ready to plot stuff
 ```
 #Overview
 
-This report presents the `r SURVIVAL` KM plots for the `r CANCER` TCGA data that have both clinical and RNASeq data available.    
+This report contains the `r SURVIVAL` Kaplan-Meier survival plots for the `r CANCER` TCGA data that have both clinical and RNASeqV2 RSEM data available.    
 
 **Additional Associated Files**
 
-The following file(s) contain the data from this report in a tab-delimited format.
+The following file contains supplementary data from this report in a tab-delimited format.  
 
 `r OUTPUT_FILE`
 
+**File Description:** To identify the best gene expression cutoff for each gene we tested a range of values between the minimum and maximum expression.  This file contains all gene expression cutoffs tested as well as the corresponding Log Rank P-value from the survival analysis.  The chosen cut off for each gene was that which obtained the lowest log-rank p-value regardless of statistical significance.
+
+**Note:** The Log Rank p-values have not been corrected for multiple testing correction because their significance was not needed to obtain a cutoff for the double gene survival analysis.
+
+##Obtaining Data
+
+Level 3 RSEM RNASeqV2 and clinical data for all `r CANCER` patients were downloaded in bulk from Broad Institutes GDAC FireBrowse Spring 2016 Analysis Run (http://firebrowse.org) on 6/20/16.  Data was loaded into an in-house R program for analysis and pre-processing (see methods below).  The `r SURVIVAL` survival data was downloaded from cBioPortal on 6/20/16 via their DATA SETS analysis tool.
+
+**FireBrowse References**
+Bulk downloades obtained from FireBrowse Spring 2016 Analysis Run (http://firebrowse.org)
+
+**cBioPortal References**
+Cerami et al. The cBio Cancer Genomics Portal: An Open Platform for Exploring Multidimensional Cancer Genomics Data. Cancer Discovery. May 2012 2; 401. 
+
+Gao et al. Integrative analysis of complex cancer genomics and clinical profiles using the cBioPortal. Sci. Signal. 6, pl1 (2013).
+
+**TCGA Acknowledgement**
+The results shown here are in whole or part based upon data generated by the TCGA Research Network: http://cancergenome.nih.gov/.
+
+**R Reference**
+R Core Team: R: A Language and Environment for Statistical Computing, Https://Www.R-Project.Org/. Vienna, Austria, R Foundation for Statistical Computing, 2015
+
 ##Patient Overview
 
-There are `r dim(cropped_gene_exp)[1]` `r CANCER` patients with tumor RNASeq data, and `r dim(tcga)[1]` patients with usable `r SURVIVAL` time points. Intersecting these data leaves `r dim(tcga_surv_genes)[1]` patients to generate the survival curves.
+There are `r dim(cropped_gene_exp)[1]` `r CANCER` patients with primary tumor RNASeqV2 data, and `r dim(tcga)[1]` patients with usable `r SURVIVAL` time points. Intersecting these data leaves `r dim(tcga_surv_genes)[1]` patients to generate the survival curves.
 
 ##Methods
 
-*Obtaining `r SURVIVAL` Data*
+**Preprocessing and Normalization**
 
-Leo provided the `r SURVIVAL` data for this analysis.  He went through all the clinical data by hand.  
+The RSEM-derived TPM (transcript-per-million) values were calculated as described in the RSEM manuscript [see RSEM Ref].  The file "illuminahiseq_rnaseqv2-RSEM_genes" was downloaded from FireBrowse as previously described and the “scaled_estimate” data was extracted and converted to the TPM value by multiplying by 1E6.  
 
-*Discretizing Gene Expression*
+The TPM values were then log2 transformed ( log2( TPM + 1 ) ) before being normalized across all samples and tissue types using simple quantile normalization with the normalizeQuantiles() function in the limma R package (see Limma Ref).  This normalization was done to ensure all column sums were equivalent.  When calculating a traditional TPM value all column sums should be equivalent; however, the RSEM-derived TPM values do not have this property, so normalization was used to make the samples comparable.  Using the TPM values also allows one to compare genes with each other as it already incorporates a correction for differing gene lengths.
 
-I labeled the gene expression of each gene for each patient as either high or low with respect to some chosen cutoff.  Cutoffs were chosen in 2 ways:
+**Survival Analysis**
 
-- *Range of Values:* Cutoffs were chosen in increments of .1 from the minimum to the maximum gene expression of a given gene. Genes were labeled as high if the expression was greater than the cutoff and low otherwise.  If the survival pvalue for a cutoff value was <= `r PVAL` AND both highN and lowN were greater than or equal to `r GROUP_MIN` the survival plot was created, otherwise, no plot is shown.  For plots not shown you can find the results in the output file `r OUTPUT_FILE`.
-- *Mean Expression:* For each gene of interest I took the average gene expression over all tumor samples and used this as the cutoff for that gene.  All plots with survival pvalues, regardless of significance, are shown.  
+The survival analysis was performed using the R survival package (see survival Ref).  Survival plots were generated for all patients together as well as for groups of patients based on the gene expression of each gene of interest. I labeled the gene expression of each gene for each patient as either high or low with respect to a chosen cutoff.  Cutoffs were chosen in 2 ways:
 
-_Note: The means were calculated over all available tumor samples, but the plots only contain data for the intersecting patients._
-
-*Adjusting P-values*
-
-Plots are displayed based on the unadjusted p-value meeting the cutoff; however, the adjusted p-value is shown for each plot as well.    
-
-P-values have been adjusted using the `r PVAL_ADJUST` method with N being set to the number of genes of interest (N=`r dim(alias)[1]`).  The thought is that we are assuming these genes work in a system together, so can influence each other.  Therefore it is necessary to correct the pvalues. 
+- *Range of Values:* Cutoffs were chosen in increments of .1 from the minimum to the maximum gene expression of a given gene. Genes were labeled as high if the expression was greater than the cutoff and low otherwise.  If the survival pvalue for a cutoff value was <= `r PVAL` AND both highN and lowN were greater than or equal to `r GROUP_MIN` the survival plot was created, otherwise, no plot is shown.  For plots not shown you can find the Log Rank Pvalue results from the survival analysis in the output file `r OUTPUT_FILE`.  **Note** that this method will test a different number of cutoffs for each gene depending on the gene's expression range.  Genes with a larger range will have more cutoffs tested, while genes with a smaller range will have fewer cutoffs tested.
+- *Mean Expression:* For each gene of interest I took the average gene expression over all tumor samples and used this as the cutoff for that gene.  All plots with survival pvalues, regardless of significance, are shown. The means were calculated over all available normal samples, but the plots only contain data for the intersecting patients.
 
 *Censoring*
 
@@ -173,6 +203,16 @@ The following are the number of patients that were censored at `r CENSOR` days:
 if(CENSOR>0) print(length(censor))else print(0)
 ```
 
+**References**
+
+*RSEM*
+RSEM: accurate transcript quantification from RNA-Seq data with or without a reference genome. BMC bioinformatics, Vol. 12, No. 1. (04 August 2011), 323, doi:10.1186/1471-2105-12-323 by Bo Li, Colin N. Dewey
+
+*R Limma*
+Ritchie ME, Phipson B, Wu D, et al: Limma powers differential expression analyses for RNA-sequencing and microarray studies. Nucleic Acids Res 43:e47, 2015
+
+*R survival*
+Therneau T: A package for survival analysis in S, v2.38, April 27th, 2016 update. http://CRAN.R-project.org/package=survival
 
 
 #Results
@@ -209,8 +249,15 @@ for(gene in names(cropped_gene_exp)){
   #     if significant, plot survival and distribution with data line
   #     if not significant move on to next value
   
-  # create vector of 10 values between min and max
-  vals <- seq(range(cropped_gene_exp[gene])[1],range(cropped_gene_exp[gene])[2], by=.1)
+  # create vector of X values between min and max using either NUM_STEPS or STEP_SIZE
+  if(STEP_SIZE > 0){
+    vals <- seq(range(cropped_gene_exp[gene])[1],range(cropped_gene_exp[gene])[2], by=STEP_SIZE)
+    }
+  else if(NUM_STEPS > 0){
+    steps <- (range(cropped_gene_exp[gene])[2]-range(cropped_gene_exp[gene])[1])/(NUM_STEPS+1)
+    vals <- seq(range(cropped_gene_exp[gene])[1],range(cropped_gene_exp[gene])[2], by=steps)[-1]
+    vals <- vals[-length(vals)]
+  }
   
   best <- NULL
 
@@ -229,11 +276,11 @@ for(gene in names(cropped_gene_exp)){
       next
     }
     ## Create the Surv() object using time and type, which is really alive or dead status.
-    tcga_surv <- Surv(as.numeric(tcga_surv_genes2$time), as.numeric(tcga_surv_genes2$type))
+    tcga_surv <- Surv(as.numeric(paste(tcga_surv_genes2$time)), as.numeric(paste(tcga_surv_genes2$type)))
     
     ## Calculate the pvalue and test for significance at p=0.05
     sdf <- survdiff(tcga_surv~tcga_surv_genes2[gene][[1]])
-    p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
+    #p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
     p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
     highN <- count(tcga_surv_genes2[,gene])$freq[1]
     lowN <- count(tcga_surv_genes2[,gene])$freq[2]
@@ -244,11 +291,11 @@ for(gene in names(cropped_gene_exp)){
       
       if(is.null(best)){
         #best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
-        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN)
       }
       else if(best$pval > p.val){
         #best <- list(gene=gene, fitobj=tcga_fit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
-        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN, adjusted=p.val_adjust)
+        best <- list(gene=gene, fitobj=tcga_npfit, cutoff=v, pval=p.val, high=highN, low=lowN)
       }
     }
   } #end for v in vals      
@@ -257,9 +304,9 @@ for(gene in names(cropped_gene_exp)){
       #plot(best$fitobj, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)), xlab="days to event", ylab="% Patients")
       #legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
   
-      survplot(fit=best$fitobj,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent(HIGHCOLOR, alpha=30), makeTransparent(LOWCOLOR, alpha=30)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c(HIGHCOLOR, LOWCOLOR), lty=1, lwd=2, xlab="days to event", ylab="% Patients")
+      survplot(fit=best$fitobj,type = "kaplan-meier",conf = "bands",col.fill=c(makeTransparent(HIGHCOLOR, alpha=30), makeTransparent(LOWCOLOR, alpha=30)),label.curves = TRUE,levels.only = TRUE,time.inc = 250,dots = FALSE, n.risk = TRUE, sep.n.risk=.055, cex.n.risk=.8, adj.n.risk=.5, col=c(HIGHCOLOR, LOWCOLOR), lty=1, lwd=2, xlab="Months to Event", ylab="% Patients Still at Risk")
       
-      title(paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Unadjusted Pval = ", round(best$pval, 5),"\n", PVAL_ADJUST, " Adjusted Pval = ", round(best$adjusted, 5)))
+      title(paste(SURVIVAL, "(N=",N,", highN=",best$high,", lowN=",best$low,") -- ", gene, "\nCutoff=",round(best$cutoff, 4),", Log Rank Pval = ", round(best$pval, 5)))
       
       legend(x=1, y=.35, legend=c("High", "Low"), col=c(HIGHCOLOR, LOWCOLOR), lty=1, lwd=3, seg.len=1, cex=.7)
 
@@ -276,7 +323,7 @@ for(gene in names(cropped_gene_exp)){
 
 ###`r SURVIVAL` Curves Using Means
 
-The following graphs were made by using the mean gene expression across all RNAseq samples as the threshold for high vs low expression.  As you can see, most are not significant.
+The following graphs were made by using the mean gene expression across all RNAseq samples as the threshold for high vs low expression.
 
 ```{r meanPlots, fig.width=15, fig.height=5}
 ## make a KM Plot for each Gene of Interest and calculate statistics
@@ -285,12 +332,12 @@ for(gene in names(cropped_gene_exp)){
       #plot both KM and density plots
       tcga_fit = survfit(tcga_surv~tcga_surv_genes[gene][[1]])
       sdf <- survdiff(tcga_surv~tcga_surv_genes[gene][[1]])
-      p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
+      #p.val_adjust <- p.adjust( (1 - pchisq(sdf$chisq, length(sdf$n) - 1)), method=PVAL_ADJUST, n=dim(alias)[1] )
       p.val <- (1 - pchisq(sdf$chisq, length(sdf$n) - 1))
       ## Get the N for high and low
       highN <- count(tcga_surv_genes[gene])$freq[1]
       lowN <- count(tcga_surv_genes[gene])$freq[2]
-      plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", highN=",highN,", lowN=",lowN,") -- ", gene, "\nUnadjusted Pval = ", round(p.val, 5), "\nAdjusted Pval = ", round(p.val_adjust, 5)), xlab="days to event", ylab="% Patients")
+      plot(tcga_fit, conf.int=TRUE, col=c("red", "blue"), main=paste(SURVIVAL, " (N=",N,", highN=",highN,", lowN=",lowN,") -- ", gene, "\nLog Rank Pval = ", round(p.val, 5)), xlab="Months to Event", ylab="% Patients Still at Risk")
       legend("topright", legend=c("High", "Low"), col=c("red", "blue"), lty=1)
   
       plot(density(as.numeric(vsd_t[gene][[1]])), main=paste("Gene Expression Distribution -- ", gene))
@@ -303,6 +350,6 @@ for(gene in names(cropped_gene_exp)){
 
 ```{r, create_pval_table}
 source("createPvalTable.R")
-createPvalFile(INPUT_FILE1, CODE, EXP_FILE, PVAL_ADJUST, alias, STEP_SIZE, ANALYSIS_ID)
+createPvalFile(TCGA_SURV_DATA=tcga, EXP_DATA=qnorm_data, CODE=CODE, alias=alias, STEP_SIZE=STEP_SIZE, FILE_NAME=OUTPUT_FILE, TISSUE_CODE)
 ```
 
