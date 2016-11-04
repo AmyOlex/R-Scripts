@@ -1,5 +1,5 @@
 ---
-title: 'PROJECT: CANCER - DFS?OS Analysis by Gene Pairs Using TCGA RNASeq Data'
+title: 'PROJECT: CANCER - DFS?OS Analysis by Gene Pairs Using TCGA RNASeqV2 RSEM Data on TISSUE TYPE HERE'
 author: "Amy Olex"
 date: "Date"
 output:
@@ -22,15 +22,16 @@ opts_chunk$set(echo=F, error=F, warning=F, message=F)
 
 ```{r global_vars, echo=TRUE}
 CANCER <- "PAAD"
-SURVIVAL <- "DFS"
-CODE <- c("free"=0, "recurrence"=1)
-#CODE <- c("alive"=0, "dead"=1)
+TISSUE_CODE <- "01"   ### 01 for Primary tumor, 11 for solid normal tissue
+SURVIVAL <- "OS"      ### OS or DFS
+CODE <- c("LIVING"=0, "DECEASED"=1)  ##categories from cBioPortal
+#CODE <- c("LIVING"=0, "DECEASED"=1)  ##change to cBioPortal DFS categories
 PVAL <- .05
 GROUP_MIN <- 20
-CENSOR <- 1500  #set to 0 if you don't want to censor data at a certain time point
+CENSOR <- 0  #set to 0 if you don't want to censor data at a certain time point
 
 WORKING_DIR <- "~/Desktop/CCTR/Data/KazuakiTakabe_S1P_0714_TCGA/TCGA Analyses/PAAD_Survival"
-INPUT_FILE1 <- "paad_DFS_120914.txt"
+
 ## Make sure the below file is the one generated from running the individual analysis using the same censoring parameters!
 INPUT_FILE2 <- "2014-12-10_survival_pvalTables_stepSize0.1_paad_DFS_120914.txt"
 DATA_FILE <- ""
